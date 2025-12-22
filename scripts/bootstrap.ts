@@ -1,4 +1,13 @@
-import { copyFile, lstat, mkdir, readdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  readlink,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import readline from 'node:readline/promises'
@@ -22,7 +31,10 @@ function resolveTargetPath(input: string, repoName: string) {
 
   const expanded = trimmed.startsWith('~') ? join(homedir(), trimmed.slice(1)) : trimmed
   const looksLikePath =
-    isAbsolute(expanded) || expanded.startsWith('.') || expanded.includes('/') || expanded.includes('\\')
+    isAbsolute(expanded) ||
+    expanded.startsWith('.') ||
+    expanded.includes('/') ||
+    expanded.includes('\\')
 
   if (looksLikePath) {
     return resolve(expanded)
@@ -93,9 +105,7 @@ async function replaceScope(dir: string, fromScope: string, toScope: string) {
         continue
       }
       await writeFile(entryPath, contents.replaceAll(fromScope, toScope))
-    } catch {
-      continue
-    }
+    } catch {}
   }
 }
 
