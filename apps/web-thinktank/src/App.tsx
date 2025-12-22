@@ -16,8 +16,9 @@ import {
 } from '@thinktank/ui-library/components/sheet'
 import { Toaster, toast } from '@thinktank/ui-library/components/sonner'
 import { Switch } from '@thinktank/ui-library/components/switch'
+import { Textarea } from '@thinktank/ui-library/components/textarea'
 import { OPENROUTER_MODELS } from '@thinktank/utils/openrouter-models'
-import { Loader2, Moon, Pencil, Play, RotateCcw, Sun } from 'lucide-react'
+import { Loader2, Moon, Pencil, Play, Plus, RotateCcw, Sun, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Markdown } from './components/Markdown'
 import { ProblemInput } from './components/ProblemInput'
@@ -34,12 +35,43 @@ import {
 } from './data/pipeline'
 import { requestStage } from './lib/openrouter'
 import { clearStoredState, loadStoredState, saveStoredState } from './lib/storage'
-import type { PipelineRun, StageConfig, StageResult, StageStatus, StoredState } from './lib/types'
+import type {
+  PipelineRun,
+  StageConfig,
+  StageKind,
+  StageResult,
+  StageStatus,
+  StoredState,
+  WorkflowConfig,
+} from './lib/types'
 
 const MAX_RUNS = 20
 const DEFAULT_RETRY_THRESHOLD = 3
+const DEFAULT_WORKFLOW_ID = 'default'
 
 const cloneDefaultStages = () => DEFAULT_STAGES.map((stage) => ({ ...stage }))
+const cloneStages = (stages: StageConfig[]) => stages.map((stage) => ({ ...stage }))
+
+const createWorkflowId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `workflow_${Date.now()}`
+}
+
+const createStageId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `stage_${Date.now()}`
+}
+
+const slugifyStageId = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
 
 const createRunId = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -81,6 +113,91 @@ const MODEL_OPTIONS = OPENROUTER_MODELS.map((model) => ({
   description: model.description,
 }))
 
+const TEMPLATE_WORKFLOWS: WorkflowConfig[] = [
+  {
+    id: DEFAULT_WORKFLOW_ID,
+    name: 'Problem Solver',
+    description: 'Baseline multi-stage workflow for structured solutions.',
+    stages: cloneDefaultStages(),
+  },
+  {
+    id: 'brainstormer',
+    name: 'Brainstormer',
+    description: 'Generates and refines new ideas given a problem area.',
+    stages: [
+      {
+        id: 'ideation',
+        label: 'Ideation',
+        enabled: true,
+        temperature: 0.6,
+        kind: 'agent',
+        systemPrompt:
+          'You generate a wide range of novel ideas for the given problem area. Be expansive, but keep ideas grounded and feasible.',
+      },
+      {
+        id: 'refinement',
+        label: 'Refinement',
+        enabled: true,
+        temperature: 0.4,
+        kind: 'synthesis',
+        systemPrompt:
+          'You refine and combine the best ideas from prior outputs into a concise set of high-potential options.',
+      },
+      {
+        id: 'summary',
+        label: 'Summary',
+        enabled: true,
+        temperature: 0.2,
+        kind: 'review',
+        systemPrompt:
+          'You review the refined ideas and produce a clear, prioritized summary with next steps.',
+      },
+    ],
+  },
+  {
+    id: 'reviewer',
+    name: 'Reviewer',
+    description: 'Intended to critically review ideas.',
+    stages: [
+      {
+        id: 'review',
+        label: 'Review',
+        enabled: true,
+        temperature: 0.3,
+        kind: 'agent',
+        systemPrompt:
+          'You critically review the given ideas, flag risks, missing assumptions, and weak points, and suggest improvements.',
+      },
+      {
+        id: 'refinement',
+        label: 'Refinement',
+        enabled: true,
+        temperature: 0.35,
+        kind: 'synthesis',
+        systemPrompt: 'You synthesize the review feedback into a refined, improved proposal.',
+      },
+      {
+        id: 'summary',
+        label: 'Summary',
+        enabled: true,
+        temperature: 0.2,
+        kind: 'review',
+        systemPrompt:
+          'You produce a final review summary with key issues, fixes, and a polished recommendation.',
+      },
+    ],
+  },
+]
+
+const mergeTemplates = (workflows: WorkflowConfig[]) => {
+  const byId = new Map(workflows.map((workflow) => [workflow.id, workflow]))
+  const mergedTemplates = TEMPLATE_WORKFLOWS.map((template) => byId.get(template.id) ?? template)
+  const extra = workflows.filter(
+    (workflow) => !TEMPLATE_WORKFLOWS.some((template) => template.id === workflow.id),
+  )
+  return [...mergedTemplates, ...extra]
+}
+
 const getAgentLabel = (modelId: string) =>
   MODEL_OPTIONS.find((option) => option.id === modelId)?.label ??
   AGENT_OPTIONS.find((option) => option.modelId === modelId)?.label ??
@@ -94,10 +211,15 @@ const getStageStatus = (results: StageResult[]): StageStatus | undefined => {
   return 'pending'
 }
 
-const isMultiAgentStage = (stageId: string) => stageId === 'planning' || stageId === 'solution'
+const isAgentStage = (stage: StageConfig) => stage.kind === 'agent'
+const isSynthesisStage = (stage: StageConfig) => stage.kind === 'synthesis'
+const isReviewStage = (stage: StageConfig) => stage.kind === 'review'
 
 const getRequestCount = (enabledStages: StageConfig[], agentCount: number) =>
-  enabledStages.reduce((count, stage) => count + (isMultiAgentStage(stage.id) ? agentCount : 1), 0)
+  enabledStages.reduce((count, stage) => {
+    if (isReviewStage(stage)) return count
+    return count + (isAgentStage(stage) ? agentCount : 1)
+  }, 0)
 
 const formatApiKey = (value: string) => {
   const trimmed = value.trim()
@@ -105,9 +227,31 @@ const formatApiKey = (value: string) => {
   return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`
 }
 
+const getStageKind = (stage: StageConfig): StageKind => {
+  if (stage.kind) return stage.kind
+  if (stage.id === 'synthesis') return 'synthesis'
+  if (stage.id === 'review') return 'review'
+  return 'agent'
+}
+
+const normalizeStageTemperature = (stage: StageConfig) => {
+  if (typeof stage.temperature === 'number') return stage.temperature
+  if (stage.kind === 'synthesis' || stage.id === 'synthesis') return 0.35
+  if (stage.kind === 'review' || stage.id === 'review') return 0.2
+  return 0.4
+}
+
+const normalizeStages = (stages?: StageConfig[]) =>
+  (stages ?? []).map((stage) => ({
+    ...stage,
+    kind: getStageKind(stage),
+    temperature: normalizeStageTemperature(stage),
+  }))
+
 const normalizeStoredState = (state: StoredState | null): StoredState | null => {
   if (!state) return null
 
+  const normalizedStages = normalizeStages(state.stages)
   const normalizedRuns =
     state.runs?.map((run) => ({
       ...run,
@@ -125,6 +269,28 @@ const normalizeStoredState = (state: StoredState | null): StoredState | null => 
         : undefined,
     })) ?? []
 
+  const normalizedWorkflows = mergeTemplates(
+    state.workflows && state.workflows.length > 0
+      ? state.workflows.map((workflow) => ({
+          ...workflow,
+          description: workflow.description ?? undefined,
+          stages: normalizeStages(workflow.stages),
+        }))
+      : [
+          {
+            id: DEFAULT_WORKFLOW_ID,
+            name: 'Default pipeline',
+            description: 'Baseline multi-stage workflow for structured solutions.',
+            stages: normalizedStages.length > 0 ? normalizedStages : cloneDefaultStages(),
+          },
+        ],
+  )
+  const normalizedSelectedWorkflowId =
+    state.selectedWorkflowId ?? normalizedWorkflows[0]?.id ?? DEFAULT_WORKFLOW_ID
+  const selectedWorkflowStages =
+    normalizedWorkflows.find((workflow) => workflow.id === normalizedSelectedWorkflowId)?.stages ??
+    normalizedStages
+
   return {
     ...state,
     agentModelIds:
@@ -137,15 +303,27 @@ const normalizeStoredState = (state: StoredState | null): StoredState | null => 
     retryThreshold: state.retryThreshold ?? DEFAULT_RETRY_THRESHOLD,
     theme: state.theme ?? 'light',
     runs: normalizedRuns,
+    workflows: normalizedWorkflows,
+    selectedWorkflowId: normalizedSelectedWorkflowId,
+    stages: selectedWorkflowStages.length > 0 ? selectedWorkflowStages : cloneDefaultStages(),
   }
 }
 
 export default function App() {
   const stored = normalizeStoredState(loadStoredState())
+  const initialWorkflows = mergeTemplates(stored?.workflows ?? TEMPLATE_WORKFLOWS)
+  const initialWorkflowId =
+    stored?.selectedWorkflowId ?? initialWorkflows[0]?.id ?? DEFAULT_WORKFLOW_ID
+  const initialStages =
+    initialWorkflows.find((workflow) => workflow.id === initialWorkflowId)?.stages ??
+    stored?.stages ??
+    cloneDefaultStages()
   const [apiKey, setApiKey] = useState(stored?.apiKey ?? '')
   const [baseUrl, setBaseUrl] = useState(stored?.baseUrl ?? DEFAULT_BASE_URL)
   const [problem, setProblem] = useState(stored?.problem ?? '')
-  const [stages, setStages] = useState<StageConfig[]>(stored?.stages ?? cloneDefaultStages())
+  const [stages, setStages] = useState<StageConfig[]>(initialStages.map((stage) => ({ ...stage })))
+  const [workflows, setWorkflows] = useState<WorkflowConfig[]>(initialWorkflows)
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState(initialWorkflowId)
   const [agentModelIds, setAgentModelIds] = useState<string[]>(
     stored?.agentModelIds ?? DEFAULT_AGENT_MODEL_IDS,
   )
@@ -165,6 +343,7 @@ export default function App() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [sheetViewAsText, setSheetViewAsText] = useState(false)
   const [historySheetOpen, setHistorySheetOpen] = useState(false)
+  const [workflowSheetOpen, setWorkflowSheetOpen] = useState(false)
   const [isEditingApiKey, setIsEditingApiKey] = useState(() => !stored?.apiKey?.trim())
   const [theme, setTheme] = useState<'light' | 'dark'>(stored?.theme ?? 'light')
   const [newModelId, setNewModelId] = useState('')
@@ -174,10 +353,19 @@ export default function App() {
     stored?.selectedRunId ?? stored?.runs?.[0]?.id,
   )
   const [isRunning, setIsRunning] = useState(false)
+  const [workflowName, setWorkflowName] = useState('')
+  const [workflowDescription, setWorkflowDescription] = useState('')
+  const [workflowStages, setWorkflowStages] = useState<
+    Array<{ id: string; name: string; prompt: string; kind: StageKind }>
+  >([])
 
   const selectedRun = useMemo(
     () => runs.find((run) => run.id === selectedRunId) ?? runs[0],
     [runs, selectedRunId],
+  )
+  const selectedWorkflow = useMemo(
+    () => workflows.find((workflow) => workflow.id === selectedWorkflowId),
+    [selectedWorkflowId, workflows],
   )
   const hasApiKey = Boolean(apiKey.trim())
   const isViewingComplete =
@@ -192,6 +380,8 @@ export default function App() {
       baseUrl,
       problem,
       stages,
+      workflows,
+      selectedWorkflowId,
       agentModelIds,
       synthesisModelId,
       reviewModelId,
@@ -208,6 +398,8 @@ export default function App() {
     runs,
     selectedRun?.id,
     stages,
+    workflows,
+    selectedWorkflowId,
     agentModelIds,
     synthesisModelId,
     reviewModelId,
@@ -215,6 +407,15 @@ export default function App() {
     retryThreshold,
     theme,
   ])
+
+  useEffect(() => {
+    if (!selectedWorkflowId) return
+    setWorkflows((prev) =>
+      prev.map((workflow) =>
+        workflow.id === selectedWorkflowId ? { ...workflow, stages } : workflow,
+      ),
+    )
+  }, [selectedWorkflowId, stages])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -237,24 +438,19 @@ export default function App() {
   }
 
   const enabledStages = stages.filter((stage) => stage.enabled)
-  const synthesisStage = stages.find((stage) => stage.id === 'synthesis')
-  const reviewStage = stages.find((stage) => stage.id === 'review')
-  const needsSynthesisModel = synthesisStage?.enabled ?? false
-  const needsReviewModel = reviewStage?.enabled ?? false
+  const synthesisStages = enabledStages.filter((stage) => isSynthesisStage(stage))
+  const reviewStage = [...enabledStages].reverse().find((stage) => isReviewStage(stage))
+  const needsAgentModels = enabledStages.some((stage) => isAgentStage(stage))
+  const needsSynthesisModel = synthesisStages.length > 0
+  const needsReviewModel = Boolean(reviewStage)
 
   const canRun =
     Boolean(problem.trim()) &&
     enabledStages.length > 0 &&
     Boolean(apiKey.trim()) &&
-    agentModelIds.length > 0 &&
+    (!needsAgentModels || agentModelIds.length > 0) &&
     (!needsSynthesisModel || Boolean(synthesisModelId.trim())) &&
     (!needsReviewModel || Boolean(reviewModelId.trim()))
-
-  const handleStageToggle = (id: string) => {
-    setStages((prev) =>
-      prev.map((stage) => (stage.id === id ? { ...stage, enabled: !stage.enabled } : stage)),
-    )
-  }
 
   const handlePromptChange = (id: string, value: string) => {
     setStages((prev) =>
@@ -286,9 +482,116 @@ export default function App() {
     setNewModelId('')
   }
 
+  const handleWorkflowSelect = (workflowId: string) => {
+    const workflow = workflows.find((item) => item.id === workflowId)
+    if (!workflow) return
+    setSelectedWorkflowId(workflowId)
+    setStages(cloneStages(workflow.stages))
+  }
+
+  const createEmptyWorkflowStage = (kind: StageKind = 'agent') => ({
+    id: createStageId(),
+    name: '',
+    prompt: '',
+    kind,
+  })
+
+  const resetWorkflowDraft = () => {
+    setWorkflowName('')
+    setWorkflowDescription('')
+    setWorkflowStages([createEmptyWorkflowStage('agent')])
+  }
+
+  const handleWorkflowStageUpdate = (
+    stageId: string,
+    updates: Partial<{ name: string; prompt: string; kind: StageKind }>,
+  ) => {
+    setWorkflowStages((prev) =>
+      prev.map((stage) => (stage.id === stageId ? { ...stage, ...updates } : stage)),
+    )
+  }
+
+  const handleWorkflowStageAdd = () => {
+    setWorkflowStages((prev) => [...prev, createEmptyWorkflowStage('agent')])
+  }
+
+  const handleWorkflowStageRemove = (stageId: string) => {
+    setWorkflowStages((prev) => prev.filter((stage) => stage.id !== stageId))
+  }
+
+  const handleSaveWorkflow = () => {
+    const trimmedName = workflowName.trim()
+    if (!trimmedName) {
+      toast.error('Add a workflow name before saving.')
+      return
+    }
+    if (workflowStages.length === 0) {
+      toast.error('Add at least one stage to save this workflow.')
+      return
+    }
+
+    const missingStage = workflowStages.find((stage) => !stage.name.trim() || !stage.prompt.trim())
+    if (missingStage) {
+      toast.error('Each stage needs a name and prompt before saving.')
+      return
+    }
+
+    const usedIds = new Set<string>()
+    const stagesToSave: StageConfig[] = workflowStages.map((stage) => {
+      const baseId = slugifyStageId(stage.name) || createStageId()
+      let stageId = baseId
+      let suffix = 2
+      while (usedIds.has(stageId)) {
+        stageId = `${baseId}-${suffix}`
+        suffix += 1
+      }
+      usedIds.add(stageId)
+      return {
+        id: stageId,
+        label: stage.name.trim(),
+        enabled: true,
+        systemPrompt: stage.prompt.trim(),
+        temperature: stage.kind === 'review' ? 0.2 : stage.kind === 'synthesis' ? 0.35 : 0.4,
+        kind: stage.kind,
+      }
+    })
+
+    const newWorkflow: WorkflowConfig = {
+      id: createWorkflowId(),
+      name: trimmedName,
+      description: workflowDescription.trim() || undefined,
+      stages: stagesToSave,
+    }
+
+    setWorkflows((prev) => [newWorkflow, ...prev])
+    setSelectedWorkflowId(newWorkflow.id)
+    setStages(cloneStages(stagesToSave))
+    setWorkflowSheetOpen(false)
+    resetWorkflowDraft()
+    toast.success('Workflow saved')
+  }
+
   const handleReset = () => {
     setProblem('')
-    setStages(cloneDefaultStages())
+    const defaultStages = cloneDefaultStages()
+    setStages(defaultStages)
+    setSelectedWorkflowId(DEFAULT_WORKFLOW_ID)
+    setWorkflows((prev) => {
+      const hasDefault = prev.some((workflow) => workflow.id === DEFAULT_WORKFLOW_ID)
+      if (!hasDefault) {
+        return [
+          {
+            id: DEFAULT_WORKFLOW_ID,
+            name: 'Default pipeline',
+            stages: defaultStages,
+          },
+          ...prev,
+        ]
+      }
+      return prev.map((workflow) =>
+        workflow.id === DEFAULT_WORKFLOW_ID ? { ...workflow, stages: defaultStages } : workflow,
+      )
+    })
     setAgentModelIds(DEFAULT_AGENT_MODEL_IDS)
     setSynthesisModelId(DEFAULT_SYNTHESIS_MODEL_ID)
     setReviewModelId(DEFAULT_REVIEW_MODEL_ID)
@@ -311,7 +614,10 @@ export default function App() {
     setApiKey('')
     setBaseUrl(DEFAULT_BASE_URL)
     setProblem('')
-    setStages(cloneDefaultStages())
+    const defaultStages = cloneDefaultStages()
+    setStages(defaultStages)
+    setWorkflows(mergeTemplates(TEMPLATE_WORKFLOWS))
+    setSelectedWorkflowId(DEFAULT_WORKFLOW_ID)
     setAgentModelIds(DEFAULT_AGENT_MODEL_IDS)
     setSynthesisModelId(DEFAULT_SYNTHESIS_MODEL_ID)
     setReviewModelId(DEFAULT_REVIEW_MODEL_ID)
@@ -345,7 +651,8 @@ export default function App() {
     const runId = createRunId()
     const createdAt = new Date().toISOString()
     const runStages: StageResult[] = enabledStages.flatMap((stage) => {
-      if (isMultiAgentStage(stage.id)) {
+      if (isReviewStage(stage)) return []
+      if (isAgentStage(stage)) {
         return agentModelIds.map((modelId) => ({
           id: `${stage.id}:${modelId}`,
           stageId: stage.id,
@@ -356,7 +663,7 @@ export default function App() {
           status: 'pending' as const,
         }))
       }
-      if (stage.id === 'synthesis') {
+      if (isSynthesisStage(stage)) {
         return [
           {
             id: `${stage.id}:${synthesisModelId}`,
@@ -377,7 +684,7 @@ export default function App() {
       problem: problem.trim(),
       createdAt,
       stages: runStages,
-      final: reviewStage?.enabled
+      final: reviewStage
         ? {
             id: 'final',
             label: 'Final review',
@@ -398,8 +705,10 @@ export default function App() {
     const priorOutputs: string[] = []
     let errorOccurred = false
 
-    for (const stageConfig of enabledStages) {
-      if (isMultiAgentStage(stageConfig.id)) {
+    const executionStages = enabledStages.filter((stage) => !isReviewStage(stage))
+
+    for (const stageConfig of executionStages) {
+      if (isAgentStage(stageConfig)) {
         const stageEntries = agentModelIds.map((modelId) => ({
           modelId,
           stageResultId: `${stageConfig.id}:${modelId}`,
@@ -472,7 +781,7 @@ export default function App() {
         continue
       }
 
-      if (stageConfig.id === 'synthesis') {
+      if (isSynthesisStage(stageConfig)) {
         const stageResultId = `${stageConfig.id}:${synthesisModelId}`
         const startTime = new Date()
         setRuns((prev) =>
@@ -529,7 +838,7 @@ export default function App() {
       }
     }
 
-    if (!errorOccurred && reviewStage?.enabled && newRun.final) {
+    if (!errorOccurred && reviewStage && newRun.final) {
       const startTime = new Date()
       setRuns((prev) =>
         updateRunFinal(prev, runId, (finalStage) => ({
@@ -692,7 +1001,7 @@ export default function App() {
                 </div>
               ))}
             </div>
-            {agentModelIds.length === 0 && (
+            {needsAgentModels && agentModelIds.length === 0 && (
               <p className="mt-3 text-xs text-rose-600 dark:text-rose-400">
                 Select at least one agent to run the pipeline.
               </p>
@@ -858,26 +1167,69 @@ export default function App() {
               )}
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-zinc-300">
-            <span className="font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400">
-              Request retries
-            </span>
-            <Switch
-              checked={retryEnabled}
-              onCheckedChange={setRetryEnabled}
-              disabled={isRunning}
-              aria-label="Enable request retries"
-            />
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-zinc-400">Retry threshold</span>
-              <Input
-                type="number"
-                min={1}
-                value={retryThreshold}
-                onChange={(event) => setRetryThreshold(Number(event.target.value))}
-                className="w-14 bg-white/90 dark:bg-zinc-900"
-                disabled={isRunning || !retryEnabled}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600 dark:text-zinc-300">
+            <div className="flex flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400">
+                  Workflow
+                </span>
+                <Select
+                  value={selectedWorkflowId ?? ''}
+                  onValueChange={handleWorkflowSelect}
+                  disabled={isRunning}
+                >
+                  <SelectTrigger className="h-8 w-44 bg-white/90 text-xs shadow-sm dark:bg-zinc-900">
+                    <SelectValue placeholder="Select workflow" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workflows.map((workflow) => (
+                      <SelectItem key={workflow.id} value={workflow.id}>
+                        {workflow.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 gap-2"
+                  onClick={() => {
+                    resetWorkflowDraft()
+                    setWorkflowSheetOpen(true)
+                  }}
+                  disabled={isRunning}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Create workflow
+                </Button>
+              </div>
+              {selectedWorkflow?.description && (
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  {selectedWorkflow.description}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400">
+                Request retries
+              </span>
+              <Switch
+                checked={retryEnabled}
+                onCheckedChange={setRetryEnabled}
+                disabled={isRunning}
+                aria-label="Enable request retries"
               />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 dark:text-zinc-400">Retry threshold</span>
+                <Input
+                  type="number"
+                  min={1}
+                  value={retryThreshold}
+                  onChange={(event) => setRetryThreshold(Number(event.target.value))}
+                  className="w-14 bg-white/90 dark:bg-zinc-900"
+                  disabled={isRunning || !retryEnabled}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -897,7 +1249,7 @@ export default function App() {
                 (result) => result.stageId === stage.id,
               )
               const status =
-                stage.id === 'review'
+                stage.kind === 'review'
                   ? selectedRun?.final?.status
                   : stageResults
                     ? getStageStatus(stageResults)
@@ -911,7 +1263,6 @@ export default function App() {
                   stageResults={stageResults}
                   disabled={isRunning}
                   disablePrompts={isViewingComplete}
-                  onToggle={handleStageToggle}
                   onPromptChange={handlePromptChange}
                   onViewResult={handleViewResult}
                 />
@@ -934,6 +1285,161 @@ export default function App() {
             <ResultsPanel run={selectedRun} />
           </div>
         </div>
+        <Sheet
+          open={workflowSheetOpen}
+          onOpenChange={(open) => {
+            setWorkflowSheetOpen(open)
+            if (open) {
+              resetWorkflowDraft()
+            }
+          }}
+        >
+          <SheetContent>
+            <div className="space-y-6">
+              <SheetHeader>
+                <SheetTitle>Create workflow</SheetTitle>
+                <SheetDescription className="text-slate-600 dark:text-zinc-300">
+                  Build a custom pipeline and save it for future runs.
+                </SheetDescription>
+              </SheetHeader>
+              <div className="grid gap-3">
+                <label
+                  htmlFor="workflow-name"
+                  className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400"
+                >
+                  Workflow name
+                </label>
+                <Input
+                  id="workflow-name"
+                  value={workflowName}
+                  onChange={(event) => setWorkflowName(event.target.value)}
+                  placeholder="Client research sprint"
+                  className="bg-white/90 dark:bg-zinc-900"
+                />
+              </div>
+              <div className="grid gap-3">
+                <label
+                  htmlFor="workflow-description"
+                  className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400"
+                >
+                  Description
+                </label>
+                <Textarea
+                  id="workflow-description"
+                  value={workflowDescription}
+                  onChange={(event) => setWorkflowDescription(event.target.value)}
+                  placeholder="Describe what this workflow is best at."
+                  className="min-h-[80px] bg-white/90 dark:bg-zinc-900"
+                />
+              </div>
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400">
+                    Stages
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="gap-2"
+                    onClick={handleWorkflowStageAdd}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add stage
+                  </Button>
+                </div>
+                <div className="space-y-4">
+                  {workflowStages.map((stage, index) => (
+                    <div
+                      key={stage.id}
+                      className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm dark:border-zinc-700/40 dark:bg-zinc-950/70"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="flex-1 space-y-2">
+                          <label
+                            htmlFor={`workflow-stage-name-${stage.id}`}
+                            className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400"
+                          >
+                            Stage {index + 1} name
+                          </label>
+                          <Input
+                            id={`workflow-stage-name-${stage.id}`}
+                            value={stage.name}
+                            onChange={(event) =>
+                              handleWorkflowStageUpdate(stage.id, { name: event.target.value })
+                            }
+                            placeholder="Discovery"
+                            className="bg-white/90 dark:bg-zinc-900"
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="gap-2"
+                          onClick={() => handleWorkflowStageRemove(stage.id)}
+                          disabled={workflowStages.length <= 1}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Remove
+                        </Button>
+                      </div>
+                      <div className="mt-4 grid gap-2">
+                        <label
+                          htmlFor={`workflow-stage-prompt-${stage.id}`}
+                          className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400"
+                        >
+                          Prompt instructions
+                        </label>
+                        <Textarea
+                          id={`workflow-stage-prompt-${stage.id}`}
+                          value={stage.prompt}
+                          onChange={(event) =>
+                            handleWorkflowStageUpdate(stage.id, { prompt: event.target.value })
+                          }
+                          className="min-h-[120px] bg-white/90 dark:bg-zinc-900"
+                        />
+                      </div>
+                      <div className="mt-4 grid gap-2 text-xs text-slate-600 dark:text-zinc-300">
+                        <label
+                          htmlFor={`workflow-stage-kind-${stage.id}`}
+                          className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400"
+                        >
+                          Stage type
+                        </label>
+                        <Select
+                          value={stage.kind}
+                          onValueChange={(value) =>
+                            handleWorkflowStageUpdate(stage.id, { kind: value as StageKind })
+                          }
+                        >
+                          <SelectTrigger
+                            id={`workflow-stage-kind-${stage.id}`}
+                            className="h-8 bg-white/90 text-xs shadow-sm dark:bg-zinc-900"
+                          >
+                            <SelectValue placeholder="Select stage type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="agent">Agent stage</SelectItem>
+                            <SelectItem value="synthesis">Synthesis stage</SelectItem>
+                            <SelectItem value="review">Final review stage</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  Synthesis stages run on the synthesis model. The last Final review stage runs with
+                  the review model.
+                </p>
+                <Button onClick={handleSaveWorkflow} className="gap-2">
+                  Save workflow
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
         <Sheet
           open={sheetOpen}
           onOpenChange={(open) => {

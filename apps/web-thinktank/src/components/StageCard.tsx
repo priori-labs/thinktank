@@ -1,5 +1,4 @@
 import { Button } from '@thinktank/ui-library/components/button'
-import { Switch } from '@thinktank/ui-library/components/switch'
 import { Textarea } from '@thinktank/ui-library/components/textarea'
 import type { StageConfig, StageResult, StageStatus } from '../lib/types'
 
@@ -17,7 +16,6 @@ type StageCardProps = {
   stageResults?: StageResult[]
   disabled?: boolean
   disablePrompts?: boolean
-  onToggle: (id: string) => void
   onPromptChange: (id: string, value: string) => void
   onViewResult: (result: StageResult) => void
 }
@@ -28,7 +26,6 @@ export const StageCard = ({
   stageResults,
   disabled,
   disablePrompts,
-  onToggle,
   onPromptChange,
   onViewResult,
 }: StageCardProps) => {
@@ -69,15 +66,6 @@ export const StageCard = ({
           <p className="mt-1 text-xs font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-zinc-400">
             {stage.id}
           </p>
-        </div>
-        <div className="flex items-center gap-3 text-sm text-slate-600 dark:text-zinc-300">
-          <Switch
-            checked={stage.enabled}
-            onCheckedChange={() => onToggle(stage.id)}
-            disabled={disabled}
-            aria-label={`${stage.label} enabled`}
-          />
-          <span>Enabled</span>
         </div>
       </div>
 

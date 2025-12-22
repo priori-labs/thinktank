@@ -1,9 +1,12 @@
+export type StageKind = 'agent' | 'synthesis' | 'review'
+
 export type StageConfig = {
   id: string
   label: string
   enabled: boolean
   systemPrompt: string
   temperature: number
+  kind: StageKind
 }
 
 export type StageStatus = 'pending' | 'running' | 'complete' | 'error'
@@ -67,6 +70,13 @@ export type PipelineRun = {
   final?: FinalResult
 }
 
+export type WorkflowConfig = {
+  id: string
+  name: string
+  description?: string
+  stages: StageConfig[]
+}
+
 export type StoredState = {
   apiKey: string
   baseUrl: string
@@ -81,4 +91,6 @@ export type StoredState = {
   theme?: 'light' | 'dark'
   runs: PipelineRun[]
   selectedRunId?: string
+  workflows?: WorkflowConfig[]
+  selectedWorkflowId?: string
 }
