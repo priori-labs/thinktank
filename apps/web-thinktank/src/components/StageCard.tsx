@@ -1,146 +1,137 @@
-import { Input } from '@thinktank/ui-library/components/input'
+import { Button } from '@thinktank/ui-library/components/button'
+import { Switch } from '@thinktank/ui-library/components/switch'
 import { Textarea } from '@thinktank/ui-library/components/textarea'
-import { MODEL_PRESETS } from '../data/pipeline'
-import type { StageConfig, StageResult } from '../lib/types'
+import type { StageConfig, StageResult, StageStatus } from '../lib/types'
 
-const statusStyles: Record<NonNullable<StageResult['status']>, string> = {
-  pending: 'bg-slate-100 text-slate-600',
-  running: 'bg-amber-100 text-amber-700',
-  complete: 'bg-emerald-100 text-emerald-700',
-  error: 'bg-rose-100 text-rose-700',
+const statusStyles: Record<StageStatus, string> = {
+  pending: 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-200',
+  running:
+    'bg-amber-50 text-amber-600 border border-amber-300 animate-pulse dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-400',
+  complete: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200',
+  error: 'bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-200',
 }
 
 type StageCardProps = {
   stage: StageConfig
-  result?: StageResult
+  status?: StageStatus
+  stageResults?: StageResult[]
   disabled?: boolean
+  disablePrompts?: boolean
   onToggle: (id: string) => void
   onPromptChange: (id: string, value: string) => void
-  onModelChange: (id: string, value: string) => void
-  onTemperatureChange: (id: string, value: number) => void
+  onViewResult: (result: StageResult) => void
 }
 
 export const StageCard = ({
   stage,
-  result,
+  status,
+  stageResults,
   disabled,
+  disablePrompts,
   onToggle,
   onPromptChange,
-  onModelChange,
-  onTemperatureChange,
+  onViewResult,
 }: StageCardProps) => {
-  const presetId = MODEL_PRESETS.find((preset) => preset.modelId === stage.modelId)?.id ?? 'custom'
+  const isDisabled = !stage.enabled
+  const promptId = `stage-${stage.id}-prompt`
 
-  const modelSelectId = `stage-${stage.id}-preset`
-  const modelInputId = `stage-${stage.id}-model`
-  const temperatureId = `stage-${stage.id}-temp`
+  const statusLabel = (value: StageStatus) => {
+    switch (value) {
+      case 'running':
+        return 'in progress'
+      case 'complete':
+        return 'complete'
+      case 'error':
+        return 'error'
+      default:
+        return 'pending'
+    }
+  }
 
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-5 shadow-sm">
+    <div
+      className={`rounded-2xl border border-slate-200/70 bg-white/90 p-5 shadow-sm transition dark:border-zinc-700/60 dark:bg-zinc-950/70 ${
+        isDisabled ? 'opacity-60 grayscale' : ''
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h3 className="text-lg font-semibold text-slate-900">{stage.label}</h3>
-            {result?.status && (
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{stage.label}</h3>
+            {status && (
               <span
-                className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${
-                  statusStyles[result.status]
-                }`}
+                className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${statusStyles[status]}`}
               >
-                {result.status}
+                {status}
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs uppercase tracking-[0.3em] text-slate-500">{stage.id}</p>
+          <p className="mt-1 text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-zinc-400">
+            {stage.id}
+          </p>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded border-slate-300 text-slate-900"
+        <div className="flex items-center gap-3 text-sm text-slate-600 dark:text-zinc-300">
+          <Switch
             checked={stage.enabled}
-            onChange={() => onToggle(stage.id)}
+            onCheckedChange={() => onToggle(stage.id)}
             disabled={disabled}
+            aria-label={`${stage.label} enabled`}
           />
-          Enabled
-        </label>
+          <span>Enabled</span>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-4">
-        <div className="grid gap-2">
-          <label
-            htmlFor={modelSelectId}
-            className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500"
-          >
-            Model preset
-          </label>
-          <select
-            id={modelSelectId}
-            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm"
-            value={presetId}
-            onChange={(event) => {
-              const nextPreset = MODEL_PRESETS.find((preset) => preset.id === event.target.value)
-              if (nextPreset) {
-                onModelChange(stage.id, nextPreset.modelId)
-              }
-            }}
-            disabled={disabled}
-          >
-            {MODEL_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.label}
-              </option>
-            ))}
-            <option value="custom">Custom</option>
-          </select>
-          <Input
-            id={modelInputId}
-            value={stage.modelId}
-            onChange={(event) => onModelChange(stage.id, event.target.value)}
-            disabled={disabled}
-            className="bg-white/90"
-            placeholder="Model ID"
-          />
-          <p className="text-xs text-slate-500">
-            Update the model ID if your OpenRouter naming differs.
-          </p>
-        </div>
-
-        <div className="grid gap-2">
-          <label
-            htmlFor={temperatureId}
-            className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500"
-          >
-            Temperature
-          </label>
-          <div className="flex items-center gap-3">
-            <input
-              id={temperatureId}
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={stage.temperature}
-              onChange={(event) => onTemperatureChange(stage.id, Number(event.target.value))}
-              disabled={disabled}
-              className="w-full accent-slate-900"
-            />
-            <span className="w-12 text-right text-sm text-slate-600">
-              {stage.temperature.toFixed(2)}
-            </span>
+        {stageResults && stageResults.length > 0 && (
+          <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3 text-sm text-slate-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-zinc-400">
+              Model statuses
+            </p>
+            <div className="mt-3 grid gap-2">
+              {stageResults.map((result) => (
+                <div key={result.id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-slate-900 dark:text-white">
+                    {result.agentLabel}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-zinc-300">
+                      {result.response?.cost != null ? `$${result.response.cost.toFixed(4)}` : '—'}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${statusStyles[result.status]}`}
+                    >
+                      {statusLabel(result.status)}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => onViewResult(result)}
+                      disabled={!result.output && !result.error}
+                    >
+                      View
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-
-        <details className="group rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-          <summary className="cursor-pointer list-none text-sm font-semibold text-slate-700">
-            Edit system prompt
-          </summary>
+        )}
+        <div className="grid gap-2">
+          <label
+            htmlFor={promptId}
+            className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-zinc-400"
+          >
+            System prompt
+          </label>
           <Textarea
-            className="mt-3 min-h-[140px] bg-white/90"
+            id={promptId}
+            className="min-h-[140px] bg-white/90 dark:bg-zinc-900"
             value={stage.systemPrompt}
             onChange={(event) => onPromptChange(stage.id, event.target.value)}
-            disabled={disabled}
+            disabled={disabled || !stage.enabled || disablePrompts}
           />
-        </details>
+        </div>
       </div>
     </div>
   )

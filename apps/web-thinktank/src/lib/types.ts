@@ -2,7 +2,6 @@ export type StageConfig = {
   id: string
   label: string
   enabled: boolean
-  modelId: string
   systemPrompt: string
   temperature: number
 }
@@ -28,9 +27,27 @@ export type StageResponse = {
 }
 
 export type StageResult = {
+  id: string
   stageId: string
   stageLabel: string
   modelId: string
+  agentLabel: string
+  systemPrompt: string
+  status: StageStatus
+  startedAt?: string
+  completedAt?: string
+  durationMs?: number
+  output?: string
+  error?: string
+  request?: StageRequest
+  response?: StageResponse
+}
+
+export type FinalResult = {
+  id: string
+  label: string
+  modelId: string
+  agentLabel?: string
   systemPrompt: string
   status: StageStatus
   startedAt?: string
@@ -47,6 +64,7 @@ export type PipelineRun = {
   problem: string
   createdAt: string
   stages: StageResult[]
+  final?: FinalResult
 }
 
 export type StoredState = {
@@ -54,6 +72,12 @@ export type StoredState = {
   baseUrl: string
   problem: string
   stages: StageConfig[]
+  agentModelIds: string[]
+  synthesisModelId: string
+  reviewModelId: string
+  retryEnabled?: boolean
+  retryThreshold?: number
+  theme?: 'light' | 'dark'
   runs: PipelineRun[]
   selectedRunId?: string
 }

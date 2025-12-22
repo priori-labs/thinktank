@@ -24,17 +24,19 @@ export const requestStage = async ({
   apiKey,
   baseUrl,
   stage,
+  modelId,
   problem,
   priorOutputs,
 }: {
   apiKey: string
   baseUrl: string
   stage: StageConfig
+  modelId: string
   problem: string
   priorOutputs: string[]
 }) => {
   const request: StageRequest = {
-    model: stage.modelId,
+    model: modelId,
     temperature: stage.temperature,
     messages: [
       { role: 'system', content: stage.systemPrompt },
@@ -48,7 +50,7 @@ export const requestStage = async ({
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': window.location.origin,
-      'X-Title': 'Thinktank Pipeline',
+      'X-Title': 'LLM Thinktank',
     },
     body: JSON.stringify(request),
   })

@@ -17,3 +17,8 @@ export const saveStoredState = (state: StoredState) => {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
 }
+
+export const clearStoredState = () => {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(STORAGE_KEY)
+}
