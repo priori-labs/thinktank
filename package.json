@@ -1,0 +1,30 @@
+{
+  "name": "unstructured-starter-repo",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*", "tooling/*"],
+  "scripts": {
+    "dev": "concurrently -n server,web \"bun --cwd apps/server dev\" \"bun --cwd apps/web dev\"",
+    "dev:server": "bun --cwd apps/server dev",
+    "dev:web": "bun --cwd apps/web dev",
+    "build": "bun run --filter '*' build",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "tsc": "tsc --build",
+    "db:generate": "bun --cwd apps/server db:generate",
+    "db:migrate": "bun --cwd apps/server db:migrate",
+    "db:studio": "bun --cwd apps/server db:studio",
+    "clean:tsc": "find . -name 'dist' -type d -not -path './node_modules/*' -prune -exec rm -rf {} + && find . -name 'tsconfig.tsbuildinfo' -not -path './node_modules/*' -delete",
+    "clean:node_modules": "./scripts/clean-node-modules.sh",
+    "reset": "bun run clean:tsc && bun run clean:node_modules && bun install",
+    "check": "bun run lint && bun run format && bun run tsc"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/bun": "^1.3.3",
+    "bun-types": "^1.3.3",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.6.3"
+  }
+}

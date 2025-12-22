@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/db" },
+    { "path": "./packages/trpc-router" },
+    { "path": "./packages/ui-library" },
+    { "path": "./packages/[template]" },
+    { "path": "./apps/server" },
+    { "path": "./apps/web" },
+    { "path": "./apps/[template]" },
+    { "path": "./tooling/[template]" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@unstructured/trpc-router",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "tsc": "tsc -b"
+  },
+  "dependencies": {
+    "@unstructured/db": "workspace:*",
+    "@trpc/server": "^11.0.0",
+    "zod": "^3.24.1"
+  }
+}
