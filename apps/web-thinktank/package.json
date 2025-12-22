@@ -1,5 +1,5 @@
 {
-  "name": "@thinktank/web",
+  "name": "@thinktank/web-thinktank",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,10 +11,7 @@
   },
   "dependencies": {
     "@thinktank/ui-library": "workspace:*",
-    "@thinktank/trpc-router": "workspace:*",
-    "@tanstack/react-query": "^5.62.16",
-    "@trpc/client": "^11.0.0",
-    "@trpc/react-query": "^11.0.0",
+    "lucide-react": "^0.542.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

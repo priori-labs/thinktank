@@ -47,7 +47,7 @@ Build from the repo root (so the workspaces resolve):
 
 ```sh
 docker build -f apps/server/Dockerfile -t starter-server .
-docker build -f apps/web/Dockerfile -t starter-web .
+docker build -f apps/web-thinktank/Dockerfile -t starter-web .
 ```
 
 ## Templates

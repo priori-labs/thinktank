@@ -1,0 +1,62 @@
+import type { PipelineRun } from '../lib/types'
+
+const formatTimestamp = (value: string) => {
+  const date = new Date(value)
+  return date.toLocaleString()
+}
+
+type RunHistoryProps = {
+  runs: PipelineRun[]
+  selectedRunId?: string
+  onSelect: (runId: string) => void
+  onClear: () => void
+}
+
+export const RunHistory = ({ runs, selectedRunId, onSelect, onClear }: RunHistoryProps) => {
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+            Run History
+          </p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-900">Previous runs</h3>
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 hover:border-slate-300"
+        >
+          Clear
+        </button>
+      </div>
+      <div className="mt-4 space-y-2">
+        {runs.length === 0 ? (
+          <p className="text-sm text-slate-500">No runs yet.</p>
+        ) : (
+          runs.map((run) => (
+            <button
+              key={run.id}
+              type="button"
+              onClick={() => onSelect(run.id)}
+              className={`w-full rounded-xl border px-3 py-3 text-left text-sm transition ${
+                run.id === selectedRunId
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              <div className="font-semibold">
+                {run.problem.trim().slice(0, 80) || 'Untitled problem'}
+              </div>
+              <div
+                className={`mt-1 text-xs ${run.id === selectedRunId ? 'text-slate-200' : 'text-slate-500'}`}
+              >
+                {formatTimestamp(run.createdAt)} · {run.stages.length} stages
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
