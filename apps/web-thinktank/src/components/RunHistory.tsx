@@ -52,7 +52,9 @@ export const RunHistory = ({ runs, selectedRunId, onSelect, onClear }: RunHistor
               </div>
               <div
                 className={`mt-1 text-xs ${
-                  run.id === selectedRunId ? 'text-slate-500 dark:text-zinc-500' : 'text-slate-500 dark:text-zinc-400'
+                  run.id === selectedRunId
+                    ? 'text-slate-500 dark:text-zinc-500'
+                    : 'text-slate-500 dark:text-zinc-400'
                 }`}
               >
                 {formatTimestamp(run.createdAt)} · {run.stages.length} stages
