@@ -35,6 +35,11 @@ tasks:
     cmds:
       - bun tsc
 
+  env:setup:
+    desc: Copy root .env into apps/, packages/, and tooling/ subfolders
+    cmds:
+      - bun env:setup
+
   bootstrap:
     desc: Bootstrap a new repo from this starter
     cmds:

@@ -9,7 +9,8 @@
       "**/.claude/**",
       "**/.vscode/**",
       "**/bun.lockb",
-      "**/tsconfig.*.json"
+      "**/tsconfig.*.json",
+      "**/figma-make-sample/**"
     ]
   },
   "organizeImports": {

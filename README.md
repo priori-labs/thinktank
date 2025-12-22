@@ -34,6 +34,8 @@ tooling/
 bun dev
 bun dev:server
 bun dev:web
+cp .env.example .env
+task env:setup
 bun tsc
 bun lint
 bun format

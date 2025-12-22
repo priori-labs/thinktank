@@ -52,3 +52,5 @@ coverage/
 .vercel
 
 tsconfig.tsbuildinfo
+
+figma-make-sample/
