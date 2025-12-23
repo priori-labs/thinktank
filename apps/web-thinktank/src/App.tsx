@@ -1035,15 +1035,26 @@ export default function App() {
         </Sheet>
         <footer className="mt-10 text-sm text-slate-500 dark:text-zinc-400">
           <div className="ml-[calc(50%-50vw)] w-screen border-t border-slate-200/70 dark:border-zinc-700/40" />
-          <div className="pt-6">
-            Built by{' '}
+          <div className="flex items-center gap-3 pt-6">
+            <span>
+              Built by{' '}
+              <a
+                href="https://unstructured-labs.xyz/"
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-slate-600 hover:text-sky-600 dark:text-zinc-300 dark:hover:text-sky-400"
+              >
+                Unstructured Labs
+              </a>
+            </span>
+            <span>·</span>
             <a
-              href="https://unstructured-labs.xyz/"
+              href="https://github.com/unstructured-labs/thinktank"
               target="_blank"
               rel="noreferrer"
               className="font-semibold text-slate-600 hover:text-sky-600 dark:text-zinc-300 dark:hover:text-sky-400"
             >
-              Unstructured Labs
+              GitHub
             </a>
           </div>
         </footer>
