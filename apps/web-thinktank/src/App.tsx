@@ -124,6 +124,40 @@ const TEMPLATE_WORKFLOWS: WorkflowConfig[] = [
       },
     ],
   },
+  {
+    id: 'summarizer',
+    name: 'Summarizer',
+    description: 'Query multiple models and synthesize their opinions into a unified summary.',
+    stages: [
+      {
+        id: 'opinion',
+        label: 'Opinion',
+        enabled: true,
+        temperature: 0.4,
+        kind: 'agent',
+        systemPrompt:
+          'You provide your thoughtful opinion and analysis on the given topic or question. Be thorough, clear, and share your unique perspective.',
+      },
+      {
+        id: 'summarize',
+        label: 'Summarize',
+        enabled: true,
+        temperature: 0.3,
+        kind: 'synthesis',
+        systemPrompt: `You are a summarizer that synthesizes multiple model responses. Your output must follow this exact format:
+
+For each model response you received, provide a dedicated summary section:
+
+**[Model Name] Summary:**
+[Provide a concise summary of this model's key points, arguments, and conclusions]
+
+After summarizing each model individually, conclude with:
+
+**Combined Summary:**
+[Provide a comprehensive synthesis that integrates the best insights from all models, highlights areas of agreement and disagreement, and presents a cohesive final answer that draws on the collective wisdom of all responses]`,
+      },
+    ],
+  },
 ]
 
 const formatApiKey = (value: string) => {
