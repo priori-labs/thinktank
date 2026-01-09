@@ -1039,7 +1039,7 @@ export default function App() {
             <span>
               Built by{' '}
               <a
-                href="https://unstructured-labs.xyz/"
+                href="https://priori-labs.com/"
                 target="_blank"
                 rel="noreferrer"
                 className="font-semibold text-slate-600 hover:text-sky-600 dark:text-zinc-300 dark:hover:text-sky-400"
